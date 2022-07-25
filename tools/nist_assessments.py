@@ -35,7 +35,7 @@ def parse(file_path: str) -> List[NistAssessment]:
         if not parent_key_match:
             raise Exception(f"Couldn't extract a NIST parent key from '{key}'")
 
-        results.append(NistAssessment(key, parent_key_match[0], requirement, objective,
+        results.append(NistAssessment(key, parent_key_match[0], requirement.strip(), objective.strip(),
                                       split_select_from(examine), split_select_from(interview),
                                       split_select_from(test)))
 

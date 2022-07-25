@@ -37,6 +37,6 @@ def parse(file_path: str) -> List[DodScore]:
                 else:
                     points = [int(value)]
 
-            results.append(DodScore(key_match[0], description.strip(), points, comments.strip()))
+                results.append(DodScore(key_match[0], description.strip(), points, comments.strip()))
 
     return results
