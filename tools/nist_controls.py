@@ -17,7 +17,7 @@ class NistControl:
 
 def parse(file_path: str) -> List[NistControl]:
     results = []
-    with open(file_path, "r") as handle:
+    with open(file_path, "r", encoding='utf-8') as handle:
         reader = csv.reader(handle)
         for row in reader:
             category, control_type, key, _, description, discussion = row

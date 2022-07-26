@@ -3,7 +3,7 @@
 """
 import json
 import os
-from typing import List
+from typing import List, Dict
 from uuid import uuid4
 from dataclasses import dataclass, asdict
 
@@ -39,14 +39,14 @@ artifacts = {
         "parser": dod_scores.parse,
         "url": "https://www.acq.osd.mil/asda/dpc/cp/cyber/docs/safeguarding/NIST-SP-800-171-Assessment-Methodology-Version-1.2.1-6.24.2020.pdf",
     },
-    "nist_800_53_r4": {
-        "parser": oscal.parse,
-        "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev4/json/NIST_SP-800-53_rev4_catalog.json",
-    },
-    "nist_800_53_r5": {
-        "parser": oscal.parse,
-        "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
-    },
+    # "nist_800_53_r4": {
+    #     "parser": oscal.parse,
+    #     "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev4/json/NIST_SP-800-53_rev4_catalog.json",
+    # },
+    # "nist_800_53_r5": {
+    #     "parser": oscal.parse,
+    #     "url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+    # },
 }
 
 
@@ -74,28 +74,74 @@ def main():
     assessments: List[NistAssessment] = parsed['nist_assessments']
     scores: List[DodScore] = parsed['dod_scores']
 
+    # At this point, I'm combining and restructuring the data to fit a model I'm using, in which the controls,
+    # assessments, and scoring are all put into one unified structure.  Scores are attached to individual assessment
+    # objectives in order to accommodate the two multi-score outliers (3.5.3 and 3.13.11) by assigning the penalty
+    # directly to the objective so that the max penalty can be taken for any non-satisfied objective and the CMMC
+    # scoring methodology will work.
     compiled = []
     for control in controls:
         cdict = asdict(control)
+        cdict["key"] = f"NIST SP 800-171R2 {cdict['key']}"
         assess = [a for a in assessments if a.parent_key == control.key]
-        cdict['assessments'] = []
-        for a in assess:
-            cdict['assessments'].append({
-                "name": a.key,
-                "requirement": a.requirement,
-                "objective": a.objective,
-                "examine": a.examine,
-                "interview": a.interview,
-                "test": a.test,
-            })
 
+        # Separate the parent assessment from the objectives
+        parent_assessment = [a for a in assess if a.parent_key == a.key][0]
+        child_assessments = [a for a in assess if a != parent_assessment]
+
+        objectives = []
+
+        # Special cases
+        # ============================================================================================================
+        # Multiple scores possible (3.5.3 and 3.13.11) or SSP (3.12.4)
         score = [s for s in scores if s.key == control.key][0]
-        cdict['score'] = score.points
-        cdict['score_comment'] = score.comment
+        if len(score.points) != 1:
+            if control.key == "3.5.3":
+                for a in child_assessments:
+                    penalty = 3 if a.key == "3.5.3[b]" else 5
+                    objectives.append(to_objective(a, penalty))
+
+            elif control.key == "3.13.11":
+                objectives = [{"key": "3.13.11[a]", "objective": "Determine if cryptography is employed to protect the confidentiality of CUI", "penalty": 5, "noncompliance": False},
+                              {"key": "3.13.11[b]", "objective": "Determine if FIPS-validated cryptography is employed to protect the confidentiality of CUI", "penalty": 3, "noncompliance": False}]
+
+            elif control.key == "3.12.4":
+                # System security plan
+                for a in child_assessments:
+                    objectives.append(to_objective(a, 0, non_compliance=True))
+
+            else:
+                raise NotImplementedError()
+        else:
+            for a in child_assessments:
+                objectives.append(to_objective(a, score.points[0]))
+
+        # No assessment objectives
+        if not objectives:
+            objectives.append(to_objective(parent_assessment, score.points[0]))
+            # print(objectives)
+
+        cdict['assessment'] = {
+            "examine": ";".join(parent_assessment.examine),
+            "interview": ";".join(parent_assessment.interview),
+            "test": ";".join(parent_assessment.test),
+            "objectives": objectives
+        }
+
         compiled.append(cdict)
 
     with open(os.path.join("build", "output.json"), "w") as handle:
         json.dump(compiled, handle, indent=2)
+
+
+
+def to_objective(item: NistAssessment, score_value: int, non_compliance=False) -> Dict:
+    text = item.objective.strip()
+    if not text.startswith("Determine if"):
+        text = "Determine if " + text
+
+    return {"key": item.key, "objective": text, "penalty": score_value, "noncompliance": non_compliance}
+
 
 
 if __name__ == '__main__':

@@ -22,7 +22,6 @@ def parse(file_path: str) -> List[NistMapping]:
         csf = sheet.cell(row, 2).value
         nist = sheet.cell(row, 3).value
         description = sheet.cell(row, 4).value
-        print(csf)
         row += 1
 
         if nist:
