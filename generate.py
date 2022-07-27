@@ -7,6 +7,9 @@ from typing import List, Dict
 from uuid import uuid4
 from dataclasses import dataclass, asdict
 
+import nltk
+nltk.download("punkt")
+
 import requests
 
 from tools import (cmmc_mapping, nist_controls, nist_assessments, dod_scores, nist_mapping, oscal)
@@ -81,9 +84,14 @@ def main():
     # scoring methodology will work.
     compiled = []
     for control in controls:
+        # Tokenize the discussion into sentences
+        sentences = nltk.sent_tokenize(control.discussion)
+        control.discussion = "\n".join(sentences)
+
         cdict = asdict(control)
         cdict["key"] = f"NIST SP 800-171R2 {cdict['key']}"
         assess = [a for a in assessments if a.parent_key == control.key]
+
 
         # Separate the parent assessment from the objectives
         parent_assessment = [a for a in assess if a.parent_key == a.key][0]
